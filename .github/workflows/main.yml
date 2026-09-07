@@ -261,3 +261,32 @@ jobs:
       # 7. VERIFY PROJECT STRUCTURE
       # ==========================================
       - name:
+      - name: Find APK
+        shell: bash
+        run: |
+          echo "Searching for APK..."
+
+          APK=$(find . \
+            -type f \
+            -name "*.apk" \
+            ! -path "*/.gradle/*" \
+            | head -n 1 || true)
+
+          if [ -z "$APK" ]; then
+            echo "ERROR: APK not found!"
+            find . -type f -name "*.apk" -print
+            exit 1
+          fi
+
+          echo "APK FOUND:"
+          echo "$APK"
+
+          echo "APK_PATH=$APK" >> "$GITHUB_ENV"
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: HILIM-CHILIM-APK
+          path: ${{ env.APK_PATH }}
+          if-no-files-found: error
+          retention-days: 30

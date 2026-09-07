@@ -217,12 +217,12 @@ jobs:
 
             find "$ROOT" \
               -type f \
-              \
+              \( \
                 -name "settings.gradle" \
                 -o -name "settings.gradle.kts" \
                 -o -name "build.gradle" \
                 -o -name "build.gradle.kts" \
-              \
+              \) \
               -print
 
             exit 1
@@ -320,4 +320,194 @@ jobs:
           echo "Gradle Wrapper ready."
 
 
-     
+      # ==========================================
+      # 8. Check Gradle
+      # ==========================================
+      - name: Check Gradle
+        shell: bash
+        run: |
+          set -e
+
+          cd "$PROJECT_DIR"
+
+          chmod +x ./gradlew
+
+          echo "=========================================="
+          echo "GRADLE VERSION"
+          echo "=========================================="
+
+          ./gradlew --version
+
+
+      # ==========================================
+      # 9. Create Debug Keystore
+      # ==========================================
+      - name: Create Debug Keystore
+        shell: bash
+        run: |
+          set -e
+
+          mkdir -p "$HOME/.android"
+
+          if [ ! -f "$HOME/.android/debug.keystore" ]; then
+
+            keytool \
+              -genkeypair \
+              -v \
+              -keystore "$HOME/.android/debug.keystore" \
+              -storepass android \
+              -alias androiddebugkey \
+              -keypass android \
+              -keyalg RSA \
+              -keysize 2048 \
+              -validity 10000 \
+              -dname "CN=Android Debug,O=Android,C=US"
+
+          fi
+
+          echo "Debug keystore ready."
+
+
+      # ==========================================
+      # 10. Clean
+      # ==========================================
+      - name: Clean Project
+        shell: bash
+        run: |
+          set -e
+
+          cd "$PROJECT_DIR"
+
+          ./gradlew clean \
+            --no-daemon \
+            --stacktrace
+
+
+      # ==========================================
+      # 11. Build Debug APK
+      # ==========================================
+      - name: Build Debug APK
+        shell: bash
+        run: |
+          set -e
+
+          cd "$PROJECT_DIR"
+
+          echo "=========================================="
+          echo "BUILDING DEBUG APK"
+          echo "=========================================="
+
+          ./gradlew assembleDebug \
+            --no-daemon \
+            --stacktrace \
+            --info
+
+
+      # ==========================================
+      # 12. Find APK
+      # ==========================================
+      - name: Find APK
+        shell: bash
+        run: |
+          set -e
+
+          echo "=========================================="
+          echo "SEARCHING FOR APK"
+          echo "=========================================="
+
+          APK_FILE=""
+
+          while IFS= read -r file; do
+            APK_FILE="$file"
+            break
+          done < <(
+            find "$PROJECT_DIR" \
+              -type f \
+              -name "*.apk" \
+              ! -path "*/.gradle/*"
+          )
+
+          if [ -z "$APK_FILE" ]; then
+
+            echo ""
+            echo "ERROR: APK was not generated."
+
+            echo ""
+            echo "All APK files found:"
+
+            find "$PROJECT_DIR" \
+              -type f \
+              -name "*.apk" \
+              -print
+
+            exit 1
+          fi
+
+
+          echo ""
+          echo "=========================================="
+          echo "APK FOUND"
+          echo "=========================================="
+
+          echo "$APK_FILE"
+
+          echo ""
+          echo "APK SIZE:"
+
+          ls -lh "$APK_FILE"
+
+          echo "APK_PATH=$APK_FILE" >> "$GITHUB_ENV"
+
+
+      # ==========================================
+      # 13. Verify APK
+      # ==========================================
+      - name: Verify APK
+        shell: bash
+        run: |
+          set -e
+
+          if [ ! -f "$APK_PATH" ]; then
+            echo "ERROR: APK file does not exist."
+            exit 1
+          fi
+
+          echo "APK verification successful."
+
+          echo ""
+          echo "APK:"
+          ls -lh "$APK_PATH"
+
+          echo ""
+          echo "SHA256:"
+          sha256sum "$APK_PATH"
+
+
+      # ==========================================
+      # 14. Upload APK Artifact
+      # ==========================================
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: HILIM-CHILIM-APK
+          path: ${{ env.APK_PATH }}
+          if-no-files-found: error
+          retention-days: 30
+
+
+      # ==========================================
+      # 15. Build Summary
+      # ==========================================
+      - name: Build Summary
+        if: success()
+        shell: bash
+        run: |
+          echo "## ✅ HILIM CHILIM APK" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "### APK Build Successful 🎉" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "📦 Artifact: **HILIM-CHILIM-APK**" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "📱 The APK is available in the **Artifacts** section." >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "⬇️ Download **HILIM-CHILIM-APK** from the Artifacts section." >> "$GITHUB_STEP_SUMMARY"

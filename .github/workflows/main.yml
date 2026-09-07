@@ -19,18 +19,16 @@ jobs:
 
     steps:
 
-      # ==================================================
+      # ==========================================
       # 1. CHECKOUT
-      # ==================================================
-
+      # ==========================================
       - name: Checkout source code
         uses: actions/checkout@v4
 
 
-      # ==================================================
+      # ==========================================
       # 2. JAVA 17
-      # ==================================================
-
+      # ==========================================
       - name: Setup Java 17
         uses: actions/setup-java@v4
         with:
@@ -38,23 +36,39 @@ jobs:
           java-version: "17"
 
 
-      # ==================================================
-      # 3. FIND ZIP
-      # ==================================================
+      # ==========================================
+      # 3. CHECK JAVA
+      # ==========================================
+      - name: Check Java
+        shell: bash
+        run: |
+          set -e
 
+          echo "=============================="
+          echo "JAVA VERSION"
+          echo "=============================="
+
+          java -version
+
+
+      # ==========================================
+      # 4. FIND ZIP
+      # ==========================================
       - name: Find ZIP file
         shell: bash
         run: |
-
           set -e
 
           echo "Searching for ZIP file..."
 
-          ZIP_FILE=$(find "$GITHUB_WORKSPACE" \
-            -type f \
-            -iname "*.zip" \
-            ! -path "*/.git/*" \
-            | head -n 1 || true)
+          ZIP_FILE="$(
+            find "$GITHUB_WORKSPACE" \
+              -type f \
+              -iname "*.zip" \
+              ! -path "*/.git/*" \
+              -print \
+              | head -n 1
+          )"
 
           if [ -n "$ZIP_FILE" ]; then
 
@@ -66,21 +80,19 @@ jobs:
           else
 
             echo "No ZIP file found."
-            echo "Repository itself will be used."
+            echo "Repository files will be used."
 
             echo "ZIP_FILE=" >> "$GITHUB_ENV"
 
           fi
 
 
-      # ==================================================
-      # 4. EXTRACT ZIP
-      # ==================================================
-
-      - name: Extract ZIP
+      # ==========================================
+      # 5. PREPARE PROJECT
+      # ==========================================
+      - name: Prepare Android Project
         shell: bash
         run: |
-
           set -e
 
           rm -rf "$RUNNER_TEMP/android-project"
@@ -89,16 +101,18 @@ jobs:
 
           if [ -n "${ZIP_FILE:-}" ]; then
 
-            echo "Extracting ZIP..."
+            echo "=============================="
+            echo "EXTRACTING ZIP"
+            echo "=============================="
 
             unzip -o "$ZIP_FILE" \
               -d "$RUNNER_TEMP/android-project"
 
-            echo "ZIP extraction completed."
-
           else
 
-            echo "Copying repository files..."
+            echo "=============================="
+            echo "USING REPOSITORY"
+            echo "=============================="
 
             cp -a "$GITHUB_WORKSPACE/." \
               "$RUNNER_TEMP/android-project/"
@@ -106,136 +120,130 @@ jobs:
           fi
 
           echo ""
-          echo "Files inside project:"
-
+          echo "Project files:"
           find "$RUNNER_TEMP/android-project" \
             -maxdepth 5 \
             -type f \
+            -print \
+            | sort \
             | head -300
 
 
-      # ==================================================
-      # 5. FIND ANDROID PROJECT
-      # ==================================================
-
+      # ==========================================
+      # 6. FIND ANDROID PROJECT
+      # ==========================================
       - name: Find Android Project
         shell: bash
         run: |
-
           set -e
 
           ROOT="$RUNNER_TEMP/android-project"
 
           PROJECT_DIR=""
 
-          echo "Searching for Android Gradle project..."
+          echo "=============================="
+          echo "SEARCHING ANDROID PROJECT"
+          echo "=============================="
 
-          # ----------------------------------------------
+
+          # ----------------------------------------
           # settings.gradle.kts
-          # ----------------------------------------------
-
-          SETTINGS_KTS=$(find "$ROOT" \
-            -type f \
-            -name "settings.gradle.kts" \
-            ! -path "*/build/*" \
-            | head -n 1 || true)
-
-          if [ -n "$SETTINGS_KTS" ]; then
-
-            PROJECT_DIR=$(dirname "$SETTINGS_KTS")
-
-          fi
-
-
-          # ----------------------------------------------
-          # settings.gradle
-          # ----------------------------------------------
-
-          if [ -z "$PROJECT_DIR" ]; then
-
-            SETTINGS_GRADLE=$(find "$ROOT" \
-              -type f \
-              -name "settings.gradle" \
-              ! -path "*/build/*" \
-              | head -n 1 || true)
-
-            if [ -n "$SETTINGS_GRADLE" ]; then
-
-              PROJECT_DIR=$(dirname "$SETTINGS_GRADLE")
-
-            fi
-
-          fi
-
-
-          # ----------------------------------------------
-          # build.gradle.kts
-          # ----------------------------------------------
-
-          if [ -z "$PROJECT_DIR" ]; then
-
-            BUILD_KTS=$(find "$ROOT" \
-              -type f \
-              -name "build.gradle.kts" \
-              ! -path "*/build/*" \
-              | head -n 1 || true)
-
-            if [ -n "$BUILD_KTS" ]; then
-
-              PROJECT_DIR=$(dirname "$BUILD_KTS")
-
-            fi
-
-          fi
-
-
-          # ----------------------------------------------
-          # build.gradle
-          # ----------------------------------------------
-
-          if [ -z "$PROJECT_DIR" ]; then
-
-            BUILD_GRADLE=$(find "$ROOT" \
-              -type f \
-              -name "build.gradle" \
-              ! -path "*/build/*" \
-              | head -n 1 || true)
-
-            if [ -n "$BUILD_GRADLE" ]; then
-
-              PROJECT_DIR=$(dirname "$BUILD_GRADLE")
-
-            fi
-
-          fi
-
-
-          # ----------------------------------------------
-          # ERROR IF NOT FOUND
-          # ----------------------------------------------
-
-          if [ -z "$PROJECT_DIR" ]; then
-
-            echo ""
-            echo "======================================"
-            echo "ERROR: ANDROID PROJECT NOT FOUND"
-            echo "======================================"
-
-            echo ""
-            echo "Gradle files found:"
-
+          # ----------------------------------------
+          FILE="$(
             find "$ROOT" \
               -type f \
-              \
+              -name "settings.gradle.kts" \
+              -print \
+              | head -n 1
+          )"
+
+          if [ -n "$FILE" ]; then
+            PROJECT_DIR="$(dirname "$FILE")"
+          fi
+
+
+          # ----------------------------------------
+          # settings.gradle
+          # ----------------------------------------
+          if [ -z "$PROJECT_DIR" ]; then
+
+            FILE="$(
+              find "$ROOT" \
+                -type f \
                 -name "settings.gradle" \
-                -o \
-                -name "settings.gradle.kts" \
-                -o \
-                -name "build.gradle" \
-                -o \
+                -print \
+                | head -n 1
+            )"
+
+            if [ -n "$FILE" ]; then
+              PROJECT_DIR="$(dirname "$FILE")"
+            fi
+
+          fi
+
+
+          # ----------------------------------------
+          # build.gradle.kts
+          # ----------------------------------------
+          if [ -z "$PROJECT_DIR" ]; then
+
+            FILE="$(
+              find "$ROOT" \
+                -type f \
                 -name "build.gradle.kts" \
+                -print \
+                | head -n 1
+            )"
+
+            if [ -n "$FILE" ]; then
+              PROJECT_DIR="$(dirname "$FILE")"
+            fi
+
+          fi
+
+
+          # ----------------------------------------
+          # build.gradle
+          # ----------------------------------------
+          if [ -z "$PROJECT_DIR" ]; then
+
+            FILE="$(
+              find "$ROOT" \
+                -type f \
+                -name "build.gradle" \
+                -print \
+                | head -n 1
+            )"
+
+            if [ -n "$FILE" ]; then
+              PROJECT_DIR="$(dirname "$FILE")"
+            fi
+
+          fi
+
+
+          # ----------------------------------------
+          # PROJECT NOT FOUND
+          # ----------------------------------------
+          if [ -z "$PROJECT_DIR" ]; then
+
+            echo ""
+            echo "ERROR: Android/Gradle project not found."
+
+            echo ""
+            echo "Available Gradle files:"
+
+            find "$ROOT" \
+              -maxdepth 8 \
+              -type f \
+              \
+                -name "settings.gradle.kts" \
+                -o -name "settings.gradle" \
+                -o -name "build.gradle.kts" \
+                -o -name "build.gradle" \
               \
-              -print
+              -print \
+              | sort
 
             exit 1
 
@@ -243,38 +251,13 @@ jobs:
 
 
           echo ""
-          echo "======================================"
-          echo "ANDROID PROJECT FOUND"
-          echo "======================================"
-
+          echo "ANDROID PROJECT FOUND:"
           echo "$PROJECT_DIR"
 
-          echo "PROJECT_DIR=$PROJECT_DIR" \
-            >> "$GITHUB_ENV"
+          echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
 
 
-      # ==================================================
-      # 6. SHOW PROJECT
-      # ==================================================
-
-      - name: Verify project structure
-        shell: bash
-        run: |
-
-          set -e
-
-          cd "$PROJECT_DIR"
-
-          echo "Project directory:"
-          pwd
-
-          echo ""
-          echo "Project files:"
-
-          ls -la
-
-          echo ""
-          echo "All Gradle files:"
-
-          find . \
-            -maxdepth 
+      # ==========================================
+      # 7. VERIFY PROJECT STRUCTURE
+      # ==========================================
+      - name:

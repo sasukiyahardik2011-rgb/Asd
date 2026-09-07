@@ -36,16 +36,12 @@ jobs:
 
 
       # ==========================================
-      # 3. Find ZIP file
+      # 3. Find ZIP
       # ==========================================
       - name: Find ZIP file
         shell: bash
         run: |
           set -e
-
-          echo "========================================"
-          echo "SEARCHING FOR ZIP FILE"
-          echo "========================================"
 
           ZIP_FILE=""
 
@@ -65,14 +61,13 @@ jobs:
             echo "$ZIP_FILE"
             echo "ZIP_FILE=$ZIP_FILE" >> "$GITHUB_ENV"
           else
-            echo "No ZIP file found."
-            echo "Using repository files directly."
+            echo "No ZIP found."
             echo "ZIP_FILE=" >> "$GITHUB_ENV"
           fi
 
 
       # ==========================================
-      # 4. Prepare Android Project
+      # 4. Prepare Project
       # ==========================================
       - name: Prepare Android Project
         shell: bash
@@ -83,27 +78,14 @@ jobs:
           mkdir -p "$RUNNER_TEMP/android-project"
 
           if [ -n "${ZIP_FILE:-}" ]; then
-
-            echo "========================================"
-            echo "EXTRACTING ZIP"
-            echo "========================================"
-
+            echo "Extracting ZIP..."
             unzip -q -o "$ZIP_FILE" \
               -d "$RUNNER_TEMP/android-project"
-
           else
-
-            echo "========================================"
-            echo "COPYING REPOSITORY"
-            echo "========================================"
-
+            echo "Copying repository..."
             cp -a "$GITHUB_WORKSPACE/." \
               "$RUNNER_TEMP/android-project/"
-
           fi
-
-          echo ""
-          echo "Project prepared."
 
 
       # ==========================================
@@ -117,11 +99,8 @@ jobs:
           ROOT="$RUNNER_TEMP/android-project"
           PROJECT_DIR=""
 
-          echo "========================================"
-          echo "SEARCHING FOR ANDROID PROJECT"
-          echo "========================================"
+          echo "Searching for Android project..."
 
-          # First preference: settings.gradle.kts
           while IFS= read -r file; do
             PROJECT_DIR="$(dirname "$file")"
             break
@@ -133,7 +112,6 @@ jobs:
               -print
           )
 
-          # Second preference: settings.gradle
           if [ -z "$PROJECT_DIR" ]; then
             while IFS= read -r file; do
               PROJECT_DIR="$(dirname "$file")"
@@ -147,7 +125,6 @@ jobs:
             )
           fi
 
-          # Third preference: build.gradle.kts
           if [ -z "$PROJECT_DIR" ]; then
             while IFS= read -r file; do
               PROJECT_DIR="$(dirname "$file")"
@@ -161,7 +138,6 @@ jobs:
             )
           fi
 
-          # Fourth preference: build.gradle
           if [ -z "$PROJECT_DIR" ]; then
             while IFS= read -r file; do
               PROJECT_DIR="$(dirname "$file")"
@@ -176,33 +152,18 @@ jobs:
           fi
 
           if [ -z "$PROJECT_DIR" ]; then
-            echo ""
             echo "ERROR: Android project not found."
-            echo ""
-            echo "Available Gradle files:"
-
-            find "$ROOT" \
-              -type f \
-              \
-                -name "settings.gradle.kts" \
-                -o -name "settings.gradle" \
-                -o -name "build.gradle.kts" \
-                -o -name "build.gradle" \
-              \
-              -print
-
             exit 1
           fi
 
-          echo ""
-          echo "ANDROID PROJECT FOUND:"
+          echo "ANDROID PROJECT:"
           echo "$PROJECT_DIR"
 
           echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
 
 
       # ==========================================
-      # 6. Verify Project Structure
+      # 6. Show Project Structure
       # ==========================================
       - name: Verify project structure
         shell: bash
@@ -211,14 +172,15 @@ jobs:
 
           cd "$PROJECT_DIR"
 
-          echo "========================================"
-          echo "PROJECT DIRECTORY"
-          echo "========================================"
+          echo "================================"
+          echo "PROJECT"
+          echo "================================"
 
           pwd
 
           echo ""
-          echo "PROJECT FILES:"
+          echo "FILES:"
+
           find . \
             -maxdepth 3 \
             -type f \
@@ -227,73 +189,187 @@ jobs:
             | head -200
 
           echo ""
+          echo "GRADLE FILES:"
 
-          if [ -d "app" ]; then
-            echo "APP MODULE FOUND:"
-            ls -la app
-          else
-            echo "WARNING: app folder not found."
-          fi
+          find . \
+            -type f \
+            \
+              -name "gradle-wrapper.properties" \
+              -o -name "settings.gradle" \
+              -o -name "settings.gradle.kts" \
+              -o -name "build.gradle" \
+              -o -name "build.gradle.kts" \
+            \
+            -print
 
 
       # ==========================================
-      # 7. Setup Gradle if Wrapper Exists
+      # 7. Detect Gradle Wrapper
       # ==========================================
-      - name: Check Gradle Wrapper
+      - name: Detect Gradle Wrapper
         shell: bash
         run: |
           set -e
 
           cd "$PROJECT_DIR"
 
-          if [ -f "./gradlew" ]; then
-            echo "Gradle wrapper found."
-            chmod +x ./gradlew
-            ./gradlew --version
+          if [ -f "gradle/wrapper/gradle-wrapper.properties" ]; then
+            echo "Gradle wrapper configuration found."
+
+            echo ""
+            echo "Wrapper configuration:"
+            cat gradle/wrapper/gradle-wrapper.properties
+
+            echo ""
+            echo "GRADLE_WRAPPER_EXISTS=true" >> "$GITHUB_ENV"
           else
-            echo "Gradle wrapper not found."
-            echo "A wrapper will be created in the next step."
+            echo "No Gradle wrapper found."
+            echo "GRADLE_WRAPPER_EXISTS=false" >> "$GITHUB_ENV"
           fi
 
 
       # ==========================================
-      # 8. Setup Gradle
+      # 8. Detect AGP Version
+      # ==========================================
+      - name: Detect Android Gradle Plugin
+        shell: bash
+        run: |
+          set -e
+
+          cd "$PROJECT_DIR"
+
+          AGP_VERSION=""
+
+          if [ -f "build.gradle.kts" ]; then
+            AGP_VERSION=$(
+              grep -oE \
+              'com\.android\.application["'\'']?[[:space:]]*(version[[:space:]]*)?["'\'']?[0-9]+\.[0-9]+\.[0-9]+' \
+              build.gradle.kts \
+              | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' \
+              | head -n 1 || true
+            )
+          fi
+
+          if [ -z "$AGP_VERSION" ] && [ -f "build.gradle" ]; then
+            AGP_VERSION=$(
+              grep -oE \
+              'com\.android\.application["'\'']?[[:space:]]*(version[[:space:]]*)?["'\'']?[0-9]+\.[0-9]+\.[0-9]+' \
+              build.gradle \
+              | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' \
+              | head -n 1 || true
+            )
+          fi
+
+          echo "Detected AGP version: ${AGP_VERSION:-unknown}"
+
+          echo "AGP_VERSION=$AGP_VERSION" >> "$GITHUB_ENV"
+
+
+      # ==========================================
+      # 9. Select Gradle
+      # ==========================================
+      - name: Select Gradle
+        shell: bash
+        run: |
+          set -e
+
+          cd "$PROJECT_DIR"
+
+          if [ -f "gradle/wrapper/gradle-wrapper.properties" ]; then
+
+            echo "Using project's Gradle wrapper."
+
+            chmod +x ./gradlew
+
+            echo ""
+            echo "Gradle version from project:"
+            ./gradlew --version
+
+          else
+
+            echo "No wrapper found."
+
+            if [[ "${AGP_VERSION:-}" == 9.4.* ]]; then
+              GRADLE_VERSION="9.6.0"
+
+            elif [[ "${AGP_VERSION:-}" == 9.3.* ]]; then
+              GRADLE_VERSION="9.5.0"
+
+            elif [[ "${AGP_VERSION:-}" == 9.2.* ]]; then
+              GRADLE_VERSION="9.4.1"
+
+            elif [[ "${AGP_VERSION:-}" == 9.1.* ]]; then
+              GRADLE_VERSION="9.3.1"
+
+            elif [[ "${AGP_VERSION:-}" == 9.0.* ]]; then
+              GRADLE_VERSION="9.1.0"
+
+            elif [[ "${AGP_VERSION:-}" == 8.13.* ]]; then
+              GRADLE_VERSION="8.13"
+
+            elif [[ "${AGP_VERSION:-}" == 8.12.* ]]; then
+              GRADLE_VERSION="8.13"
+
+            elif [[ "${AGP_VERSION:-}" == 8.11.* ]]; then
+              GRADLE_VERSION="8.13"
+
+            else
+              GRADLE_VERSION="8.13"
+            fi
+
+            echo "Selected Gradle: $GRADLE_VERSION"
+
+            echo "GRADLE_VERSION=$GRADLE_VERSION" >> "$GITHUB_ENV"
+
+          fi
+
+
+      # ==========================================
+      # 10. Setup Gradle
       # ==========================================
       - name: Setup Gradle
+        if: env.GRADLE_WRAPPER_EXISTS != 'true'
         uses: gradle/actions/setup-gradle@v4
         with:
-          gradle-version: "8.13"
+          gradle-version: ${{ env.GRADLE_VERSION }}
 
 
       # ==========================================
-      # 9. Prepare Gradle Wrapper
+      # 11. Create Wrapper If Needed
       # ==========================================
-      - name: Prepare Gradle Wrapper
+      - name: Create Gradle Wrapper
+        if: env.GRADLE_WRAPPER_EXISTS != 'true'
         shell: bash
         run: |
           set -e
 
           cd "$PROJECT_DIR"
 
-          if [ -f "./gradlew" ]; then
-
-            echo "Gradle wrapper already exists."
-
-          else
-
-            echo "Creating Gradle wrapper..."
-
-            gradle wrapper
-
-          fi
+          gradle wrapper \
+            --gradle-version "$GRADLE_VERSION"
 
           chmod +x ./gradlew
 
-          echo "Gradle wrapper ready."
+          echo "Gradle wrapper created."
 
 
       # ==========================================
-      # 10. Create Debug Keystore
+      # 12. Check Gradle
+      # ==========================================
+      - name: Check Gradle
+        shell: bash
+        run: |
+          set -e
+
+          cd "$PROJECT_DIR"
+
+          chmod +x ./gradlew
+
+          ./gradlew --version
+
+
+      # ==========================================
+      # 13. Create Debug Keystore
       # ==========================================
       - name: Create Debug Keystore
         shell: bash
@@ -303,49 +379,7 @@ jobs:
           mkdir -p "$HOME/.android"
 
           if [ ! -f "$HOME/.android/debug.keystore" ]; then
-
             keytool \
               -genkeypair \
               -v \
-              -keystore "$HOME/.android/debug.keystore" \
-              -storepass android \
-              -alias androiddebugkey \
-              -keypass android \
-              -keyalg RSA \
-              -keysize 2048 \
-              -validity 10000 \
-              -dname "CN=Android Debug,O=Android,C=US"
-
-          fi
-
-          echo "Debug keystore ready."
-
-
-      # ==========================================
-      # 11. Clean Project
-      # ==========================================
-      - name: Clean Project
-        shell: bash
-        run: |
-          set -e
-
-          cd "$PROJECT_DIR"
-
-          ./gradlew clean \
-            --no-daemon \
-            --stacktrace
-
-
-      # ==========================================
-      # 12. Build Debug APK
-      # ==========================================
-      - name: Build Debug APK
-        shell: bash
-        run: |
-          set -e
-
-          cd "$PROJECT_DIR"
-
-          echo "========================================"
-          echo "BUILDING DEBUG APK"
-         
+              -keystore "$HOME/.
